@@ -1,75 +1,119 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
-    <title>TechPain Control</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Painel TechPain</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f4; }
-        button { padding: 15px 30px; font-size: 18px; margin: 10px; border-radius: 8px; border: none; cursor: pointer; }
-        .on { background: #28a745; color: white; }
-        .off { background: #dc3545; color: white; }
-        .connect { background: #007bff; color: white; }
-        #status { margin-top: 20px; font-weight: bold; color: #555; }
-        #data { font-size: 24px; color: #333; margin: 20px; padding: 15px; border: 1px solid #ccc; background: white; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; }
+        .card { background: #2d2d2d; border-radius: 15px; padding: 20px; width: 90%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-top: 20px; }
+        .display { font-size: 2.5rem; color: #00ff00; margin: 10px 0; font-family: monospace; }
+        .label { color: #aaa; font-size: 0.9rem; text-transform: uppercase; }
+        .status-badge { padding: 5px 15px; border-radius: 20px; font-weight: bold; }
+        .on { background: #28a745; } .off { background: #555; }
+        input[type="number"] { width: 60px; padding: 8px; border-radius: 5px; border: none; }
+        button { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-connect { background: #007bff; color: white; width: 100%; margin-bottom: 15px; }
+        .btn-send { background: #ffc107; color: black; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-    <h2>TechPain Web Control</h2>
-    
-    <button class="connect" onclick="connectBLE()">Conectar Dispositivo</button>
-    <div id="status">Desconectado</div>
-    
-    <div id="data">Aguardando dados...</div>
+    <div class="card">
+        <button class="btn-connect" onclick="connectBLE()">CONECTAR DISPOSITIVO</button>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="label">Status:</span>
+            <span id="st-badge" class="status-badge off">DESCONECTADO</span>
+        </div>
 
-    <button class="on" onclick="sendCommand('A')">LIGAR (A)</button>
-    <button class="off" onclick="sendCommand('B')">DESLIGAR (B)</button>
+        <hr style="border: 0.5px solid #444; margin: 20px 0;">
+
+        <div>
+            <span class="label">Corrente Real (mA)</span>
+            <div id="read-i" class="display">0.0</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between;">
+            <div>
+                <span class="label">Tempo Decorrido</span>
+                <div id="read-time-dec" style="font-size: 1.2rem; color: #00d4ff;">00:00</div>
+            </div>
+            <div style="text-align: right;">
+                <span class="label">Tempo Total</span>
+                <div id="read-time-set" style="font-size: 1.2rem; color: #aaa;">00:00</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <span class="label">Ajustes</span>
+        <div class="controls">
+            <input type="number" id="set-i" step="0.1" placeholder="mA">
+            <button class="btn-send" onclick="sendSetpoint()">ENVIAR I</button>
+            
+            <button class="on" onclick="sendCommand('A')">START</button>
+            <button class="off" onclick="sendCommand('B')">STOP</button>
+        </div>
+    </div>
 
     <script>
-        // UUIDs do seu código ESP32
         const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const CHARACTERISTIC_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // ESP -> Web
-        const CHARACTERISTIC_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Web -> ESP
+        const CHARACTERISTIC_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHARACTERISTIC_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 
-        let device, server, service, rxChar, txChar;
+        let rxChar, device;
 
         async function connectBLE() {
             try {
-                document.getElementById('status').innerText = "Buscando...";
                 device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'TechPain Device' }],
+                    filters: [{ namePrefix: 'TechPain' }],
                     optionalServices: [SERVICE_UUID]
                 });
-
-                server = await device.gatt.connect();
-                service = await server.getPrimaryService(SERVICE_UUID);
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
                 rxChar = await service.getCharacteristic(CHARACTERISTIC_RX);
-                txChar = await service.getCharacteristic(CHARACTERISTIC_TX);
+                const txChar = await service.getCharacteristic(CHARACTERISTIC_TX);
 
-                // Ativar notificações para receber "A", "I", "R", "T" do ESP32
                 await txChar.startNotifications();
-                txChar.addEventListener('characteristicvaluechanged', handleData);
+                txChar.addEventListener('characteristicvaluechanged', (e) => {
+                    let str = new TextDecoder().decode(e.target.value);
+                    parseData(str);
+                });
 
-                document.getElementById('status').innerText = "Conectado!";
-            } catch (error) {
-                console.log(error);
-                document.getElementById('status').innerText = "Erro ao conectar.";
-            }
+                document.getElementById('st-badge').innerText = "CONECTADO";
+                document.getElementById('st-badge').classList.replace('off', 'on');
+            } catch (err) { console.error(err); }
         }
 
-        function handleData(event) {
-            let value = new TextDecoder().decode(event.target.value);
-            document.getElementById('data').innerText = "Recebido: " + value;
+        function parseData(s) {
+            // Exemplo esperado: AI5.0R4.8T01:0000:05
+            // Identificar Status (A ou B no início)
+            const status = s.startsWith('A') ? "LIGADO" : "DESLIGADO";
+            document.getElementById('st-badge').innerText = status;
+
+            // Regex para capturar Corrente Real (R até T)
+            const matchR = s.match(/R([\d.]+)/);
+            if(matchR) document.getElementById('read-i').innerText = matchR[1];
+
+            // Capturar Tempos (T até o fim)
+            // Divide a parte após o T pelo formato XX:XX
+            const matchT = s.match(/T(\d{2}:\d{2})(\d{2}:\d{2})/);
+            if(matchT) {
+                document.getElementById('read-time-set').innerText = matchT[1];
+                document.getElementById('read-time-dec').innerText = matchT[2];
+            }
         }
 
         async function sendCommand(cmd) {
-            if (rxChar) {
-                let encoder = new TextEncoder();
-                await rxChar.writeValue(encoder.encode(cmd));
-                console.log("Enviado: " + cmd);
-            } else {
-                alert("Conecte primeiro!");
-            }
+            if (!rxChar) return;
+            await rxChar.writeValue(new TextEncoder().encode(cmd));
+        }
+
+        async function sendSetpoint() {
+            let val = document.getElementById('set-i').value;
+            if (val) await sendCommand('I' + val);
         }
     </script>
 </body>
