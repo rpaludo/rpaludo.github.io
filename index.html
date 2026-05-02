@@ -31,7 +31,7 @@
         <hr style="border: 0.5px solid #444; margin: 20px 0;">
 
         <div>
-            <span class="label">Corrente Real (mA)</span>
+            <span class="label">Corrente Ajustada (mA)</span>
             <div id="read-i" class="display">0.0</div>
         </div>
 
@@ -93,9 +93,9 @@
             const status = s.startsWith('A') ? "LIGADO" : "DESLIGADO";
             document.getElementById('st-badge').innerText = status;
 
-            // Regex para capturar Corrente Real (R até T)
-            const matchR = s.match(/R([\d.]+)/);
-            if(matchR) document.getElementById('read-i').innerText = matchR[1];
+            // Regex para capturar Corrente Ajustada (I até R)
+            const matchI = s.match(/I([\d.]+)/);
+            if(matchI) document.getElementById('read-i').innerText = matchI[1];
 
             // Capturar Tempos (T até o fim)
             // Divide a parte após o T pelo formato XX:XX
