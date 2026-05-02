@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Current Generator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      gap: 20px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #e0e0e0;
+    }
+
+    /* ── Status bar ── */
+    #status-bar {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #1c1c1e;
+      border-radius: 14px;
+      padding: 12px 16px;
+    }
+
+    #status-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #status-dot.connected   { background: #30d158; }
+    #status-dot.connecting  { background: #ffd60a; animation: pulse 1s infinite; }
+    #status-dot.error       { background: #ff453a; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+
+    #status-text { font-size: 0.9rem; color: #aaa; flex: 1; }
+
+    /* ── Cards ── */
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #1c1c1e;
+      border-radius: 18px;
+      padding: 20px;
+    }
+
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: #888;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    /* ── Estado do dispositivo ── */
+    #device-state {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #state-label {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #555;
+      transition: color 0.3s;
+    }
+    #state-label.on  { color: #30d158; }
+    #state-label.off { color: #ff453a; }
+
+    #setpoint-display {
+      text-align: right;
+    }
+    #setpoint-display .value {
+      font-size: 2.2rem;
+      font-weight: 300;
+      color: #f0f0f0;
+    }
+    #setpoint-display .unit {
+      font-size: 0.9rem;
+      color: #888;
+    }
+
+    /* ── Slider de corrente ── */
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: #3a3a3c;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: #0a84ff;
+      cursor: pointer;
+    }
+
+    #slider-val {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #0a84ff;
+      min-width: 52px;
+      text-align: right;
+    }
+
+    /* ── Input numérico ── */
+    .input-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    input[type=number] {
+      flex: 1;
+      background: #2c2c2e;
+      border: 1px solid #3a3a3c;
+      border-radius: 10px;
+      color: #f0f0f0;
+      font-size: 1.1rem;
+      padding: 10px 14px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type=number]:focus { border-color: #0a84ff; }
+
+    /* ── Botões ── */
+    .btn {
+      border: none;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 14px 0;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      width: 100%;
+    }
+    .btn:active { transform: scale(0.97); opacity: 0.85; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .btn-blue   { background: #0a84ff; color: #fff; }
+    .btn-green  { background: #30d158; color: #000; }
+    .btn-red    { background: #ff453a; color: #fff; }
+    .btn-gray   { background: #3a3a3c; color: #f0f0f0; }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn-set {
+      padding: 12px 20px;
+      border-radius: 10px;
+      white-space: nowrap;
+      width: auto;
+    }
+
+    /* ── Log ── */
+    #log {
+      font-family: 'Menlo', 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: #8e8e93;
+      max-height: 120px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+    #log .rx  { color: #30d158; }
+    #log .tx  { color: #0a84ff; }
+    #log .err { color: #ff453a; }
+  </style>
+</head>
+<body>
+
+  <h1>Current Generator</h1>
+
+  <!-- Status -->
+  <div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">Desligado</span>
+  </div>
+
+  <!-- Estado do dispositivo -->
+  <div class="card">
+    <div class="card-title">Estado</div>
+    <div id="device-state">
+      <div id="state-label">—</div>
+      <div id="setpoint-display">
+        <div class="value" id="sp-value">—</div>
+        <div class="unit">mA</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Setpoint -->
+  <div class="card">
+    <div class="card-title">Setpoint de Corrente</div>
+    <div class="slider-row">
+      <input type="range" id="slider" min="0" max="20" step="0.1" value="0">
+      <span id="slider-val">0.0 mA</span>
+    </div>
+    <div class="input-row">
+      <input type="number" id="manual-input" min="0" max="100" step="0.1"
+             placeholder="mA (ex: 5.5)">
+      <button class="btn btn-blue btn-set" id="btn-set">Definir</button>
+    </div>
+  </div>
+
+  <!-- Controlo ON/OFF -->
+  <div class="card">
+    <div class="card-title">Controlo</div>
+    <div class="btn-row">
+      <button class="btn btn-green" id="btn-on"  disabled>Ligar</button>
+      <button class="btn btn-red"   id="btn-off" disabled>Desligar</button>
+    </div>
+  </div>
+
+  <!-- Conectar/Desconectar -->
+  <div class="card" style="max-width:420px;width:100%">
+    <button class="btn btn-blue" id="btn-connect">Ligar Bluetooth</button>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <div class="card-title">Log BLE</div>
+    <div id="log"></div>
+  </div>
+
+<script>
+  const SERVICE_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const CHAR_RX_UUID  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // app → device
+  const CHAR_TX_UUID  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // device → app (notify)
+
+  let rxChar = null;
+  let device = null;
+  let currentSetpoint = 0.0;
+
+  // ── UI refs ──────────────────────────────────────────────────────────────
+  const dot        = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const stateLabel = document.getElementById('state-label');
+  const spValue    = document.getElementById('sp-value');
+  const slider     = document.getElementById('slider');
+  const sliderVal  = document.getElementById('slider-val');
+  const manualIn   = document.getElementById('manual-input');
+  const btnConnect = document.getElementById('btn-connect');
+  const btnOn      = document.getElementById('btn-on');
+  const btnOff     = document.getElementById('btn-off');
+  const btnSet     = document.getElementById('btn-set');
+  const logEl      = document.getElementById('log');
+
+  // ── Log helper ────────────────────────────────────────────────────────────
+  function log(msg, cls = '') {
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    const now = new Date();
+    const ts = now.toTimeString().slice(0,8);
+    line.textContent = `[${ts}] ${msg}`;
+    logEl.prepend(line);
+    if (logEl.children.length > 60) logEl.lastChild.remove();
+  }
+
+  // ── Status bar ────────────────────────────────────────────────────────────
+  function setStatus(state, text) {
+    dot.className = state;
+    statusText.textContent = text;
+  }
+
+  // ── Update device state display ───────────────────────────────────────────
+  function updateDisplay(on, sp) {
+    stateLabel.textContent = on ? 'ON' : 'OFF';
+    stateLabel.className   = on ? 'on' : 'off';
+    spValue.textContent    = sp !== null ? sp.toFixed(1) : '—';
+  }
+
+  // ── Parse notification from device ───────────────────────────────────────
+  // Format: "AI5.5" = ON, 5.5 mA  |  "BI0.0" = OFF
+  function parseNotify(str) {
+    const on = str.includes('A');
+    const m  = str.match(/I([\d.]+)/);
+    const sp = m ? parseFloat(m[1]) : null;
+    return { on, sp };
+  }
+
+  // ── Slider sync ───────────────────────────────────────────────────────────
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    sliderVal.textContent = v.toFixed(1) + ' mA';
+    manualIn.value = v.toFixed(1);
+    currentSetpoint = v;
+  });
+
+  manualIn.addEventListener('input', () => {
+    const v = parseFloat(manualIn.value);
+    if (!isNaN(v) && v >= 0 && v <= 100) {
+      currentSetpoint = v;
+      if (v <= 20) slider.value = v;
+      sliderVal.textContent = v.toFixed(1) + ' mA';
+    }
+  });
+
+  // ── Send BLE command ──────────────────────────────────────────────────────
+  async function sendCommand(cmd) {
+    if (!rxChar) { log('Não conectado', 'err'); return; }
+    try {
+      const enc = new TextEncoder();
+      await rxChar.writeValueWithoutResponse(enc.encode(cmd));
+      log(`TX: ${cmd}`, 'tx');
+    } catch (e) {
+      log('Erro TX: ' + e.message, 'err');
+    }
+  }
+
+  // ── Button handlers ───────────────────────────────────────────────────────
+  btnOn.addEventListener('click',  () => sendCommand(`AI${currentSetpoint.toFixed(1)}`));
+  btnOff.addEventListener('click', () => sendCommand('B'));
+  btnSet.addEventListener('click', () => {
+    const v = parseFloat(manualIn.value);
+    if (isNaN(v) || v < 0 || v > 100) { log('Valor inválido (0-100 mA)', 'err'); return; }
+    currentSetpoint = v;
+    sendCommand(`I${v.toFixed(1)}`);
+  });
+
+  // ── Connect ───────────────────────────────────────────────────────────────
+  btnConnect.addEventListener('click', async () => {
+    if (device && device.gatt.connected) {
+      device.gatt.disconnect();
+      return;
+    }
+
+    setStatus('connecting', 'A conectar…');
+    try {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ name: 'Current Generator' }],
+        optionalServices: [SERVICE_UUID]
+      });
+
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+
+      const server  = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+
+      // TX characteristic — subscribe to notifications
+      const txChar = await service.getCharacteristic(CHAR_TX_UUID);
+      await txChar.startNotifications();
+      txChar.addEventListener('characteristicvaluechanged', (e) => {
+        const str = new TextDecoder().decode(e.target.value);
+        log(`RX: ${str}`, 'rx');
+        const { on, sp } = parseNotify(str);
+        updateDisplay(on, sp);
+        if (sp !== null) {
+          currentSetpoint = sp;
+          if (sp <= 20) slider.value = sp;
+          sliderVal.textContent = sp.toFixed(1) + ' mA';
+        }
+      });
+
+      // RX characteristic — for writing commands
+      rxChar = await service.getCharacteristic(CHAR_RX_UUID);
+
+      setStatus('connected', 'Conectado: ' + device.name);
+      btnConnect.textContent = 'Desligar Bluetooth';
+      btnConnect.classList.replace('btn-blue', 'btn-gray');
+      btnOn.disabled  = false;
+      btnOff.disabled = false;
+      log('Conectado a ' + device.name, 'rx');
+
+    } catch (e) {
+      setStatus('error', 'Erro: ' + e.message);
+      log('Erro: ' + e.message, 'err');
+      device = null;
+    }
+  });
+
+  function onDisconnected() {
+    rxChar = null;
+    setStatus('', 'Desligado');
+    stateLabel.textContent = '—';
+    stateLabel.className   = '';
+    spValue.textContent    = '—';
+    btnConnect.textContent = 'Ligar Bluetooth';
+    btnConnect.classList.replace('btn-gray', 'btn-blue');
+    btnOn.disabled  = true;
+    btnOff.disabled = true;
+    log('Desconectado', 'err');
+    device = null;
+  }
+</script>
+</body>
+</html>
