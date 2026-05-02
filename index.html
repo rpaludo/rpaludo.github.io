@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TechPain Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f4; }
+        button { padding: 15px 30px; font-size: 18px; margin: 10px; border-radius: 8px; border: none; cursor: pointer; }
+        .on { background: #28a745; color: white; }
+        .off { background: #dc3545; color: white; }
+        .connect { background: #007bff; color: white; }
+        #status { margin-top: 20px; font-weight: bold; color: #555; }
+        #data { font-size: 24px; color: #333; margin: 20px; padding: 15px; border: 1px solid #ccc; background: white; }
+    </style>
+</head>
+<body>
+
+    <h2>TechPain Web Control</h2>
+    
+    <button class="connect" onclick="connectBLE()">Conectar Dispositivo</button>
+    <div id="status">Desconectado</div>
+    
+    <div id="data">Aguardando dados...</div>
+
+    <button class="on" onclick="sendCommand('A')">LIGAR (A)</button>
+    <button class="off" onclick="sendCommand('B')">DESLIGAR (B)</button>
+
+    <script>
+        // UUIDs do seu código ESP32
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHARACTERISTIC_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // ESP -> Web
+        const CHARACTERISTIC_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Web -> ESP
+
+        let device, server, service, rxChar, txChar;
+
+        async function connectBLE() {
+            try {
+                document.getElementById('status').innerText = "Buscando...";
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'TechPain Device' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                server = await device.gatt.connect();
+                service = await server.getPrimaryService(SERVICE_UUID);
+                rxChar = await service.getCharacteristic(CHARACTERISTIC_RX);
+                txChar = await service.getCharacteristic(CHARACTERISTIC_TX);
+
+                // Ativar notificações para receber "A", "I", "R", "T" do ESP32
+                await txChar.startNotifications();
+                txChar.addEventListener('characteristicvaluechanged', handleData);
+
+                document.getElementById('status').innerText = "Conectado!";
+            } catch (error) {
+                console.log(error);
+                document.getElementById('status').innerText = "Erro ao conectar.";
+            }
+        }
+
+        function handleData(event) {
+            let value = new TextDecoder().decode(event.target.value);
+            document.getElementById('data').innerText = "Recebido: " + value;
+        }
+
+        async function sendCommand(cmd) {
+            if (rxChar) {
+                let encoder = new TextEncoder();
+                await rxChar.writeValue(encoder.encode(cmd));
+                console.log("Enviado: " + cmd);
+            } else {
+                alert("Conecte primeiro!");
+            }
+        }
+    </script>
+</body>
+</html>
